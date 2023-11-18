@@ -15,12 +15,13 @@ blueprint:
       selector:
         entity:
           domain: climate
-    notification_target:
-      name: Notification Target
-      description: The mobile device to notify when the door is open/closed.
+    notification_targets:
+      name: Notification Targets
+      description: The mobile devices to notify when the door is open/closed.
       selector:
         device:
           integration: mobile_app
+          multiple: true
     reminder_interval:
       name: Reminder Interval
       description: Time interval for the reminder notification when the door remains open (in minutes).
@@ -76,10 +77,13 @@ action:
           entity_id: !input door_sensor
           state: "on"
       sequence:
-        - device_id: !input notification_target
-          domain: mobile_app
-          type: notify
-          message: "The door is still open!"
+        - repeat:
+            foreach: "{{ notification_targets }}"
+            sequence:
+              - device_id: "{{ repeat.item }}"
+                domain: mobile_app
+                type: notify
+                message: "The door is still open!"
         - delay: "{{ reminder_interval | int }}:00"
 
   - wait_for_trigger:
@@ -87,10 +91,13 @@ action:
         entity_id: !input door_sensor
         from: "on"
         to: "off"
-  - device_id: !input notification_target
-    domain: mobile_app
-    type: notify
-    message: "The door is closed now."
+  - repeat:
+      foreach: "{{ notification_targets }}"
+      sequence:
+        - device_id: "{{ repeat.item }}"
+          domain: mobile_app
+          type: notify
+          message: "The door is closed now."
   - service: climate.set_hvac_mode
     target:
       entity_id: !input thermostat
