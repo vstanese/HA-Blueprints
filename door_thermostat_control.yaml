@@ -50,7 +50,7 @@ blueprint:
 variables:
   door_sensor: !input door_sensor
   thermostat: !input thermostat
-  notification_target: !input notification_target
+  notification_targets: !input notification_targets
   reminder_interval: !input reminder_interval
   delay_before_reminder: !input delay_before_reminder
   thermostat_state_helper: !input thermostat_state_helper
