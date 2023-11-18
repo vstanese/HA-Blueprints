@@ -1,14 +1,20 @@
 blueprint:
-  name: Door Open Thermostat Control
-  description: Turn off the thermostat when a door is opened and restore its state when the door is closed. Send repeated notifications if the door remains open.
+  name: Multi-Sensor Door Open Thermostat Control with Room Name
+  description: Controls the thermostat based on the state of multiple door sensors in a specified room. Turns off the thermostat if any door is open and restores it when all doors are closed. Sends notifications to multiple mobile devices.
   domain: automation
   input:
-    door_sensor:
-      name: Door Sensor
-      description: The door sensor to monitor.
+    room_name:
+      name: Room Name
+      description: The name of the room with the door sensors.
+      selector:
+        text: {}
+    door_sensors:
+      name: Door Sensors
+      description: The door sensors to monitor in the specified room.
       selector:
         entity:
           domain: binary_sensor
+          multiple: true
     thermostat:
       name: Thermostat
       description: The thermostat to control.
@@ -17,14 +23,14 @@ blueprint:
           domain: climate
     notification_targets:
       name: Notification Targets
-      description: The mobile devices to notify when the door is open/closed.
+      description: The mobile devices to notify when any door in the specified room is open/closed.
       selector:
         device:
           integration: mobile_app
           multiple: true
     reminder_interval:
       name: Reminder Interval
-      description: Time interval for the reminder notification when the door remains open (in minutes).
+      description: Time interval for the reminder notification when any door in the specified room remains open (in minutes).
       default: 5
       selector:
         number:
@@ -48,17 +54,18 @@ blueprint:
           domain: input_select
 
 variables:
-  door_sensor: !input door_sensor
+  room_name: !input room_name
+  door_sensors: !input door_sensors
   thermostat: !input thermostat
   notification_targets: !input notification_targets
   reminder_interval: !input reminder_interval
   delay_before_reminder: !input delay_before_reminder
   thermostat_state_helper: !input thermostat_state_helper
+  number_of_sensors: "{{ expand(door_sensors) | count }}"
 
 trigger:
   - platform: state
-    entity_id: !input door_sensor
-    from: "off"
+    entity_id: !input door_sensors
     to: "on"
 
 action:
@@ -71,37 +78,39 @@ action:
     target:
       entity_id: !input thermostat
   - delay: "{{ delay_before_reminder | int }}:00"
-  - repeat:
+  - alias: "Door Open Notification Loop"
+    repeat:
       while:
-        - condition: state
-          entity_id: !input door_sensor
-          state: "on"
+        - condition: template
+          value_template: "{{ expand(door_sensors) | selectattr('state','eq','on') | list | count > 0 }}"
       sequence:
-        - repeat:
-            foreach: "{{ notification_targets }}"
-            sequence:
-              - device_id: "{{ repeat.item }}"
-                domain: mobile_app
-                type: notify
-                message: "The door is still open!"
+        - service: notify.notify
+          data:
+            target: "{{ notification_targets }}"
+            message: "The door in {{ room_name }} is still open!"
         - delay: "{{ reminder_interval | int }}:00"
-
   - wait_for_trigger:
       - platform: state
-        entity_id: !input door_sensor
-        from: "on"
+        entity_id: !input door_sensors
         to: "off"
-  - repeat:
-      foreach: "{{ notification_targets }}"
-      sequence:
-        - device_id: "{{ repeat.item }}"
-          domain: mobile_app
-          type: notify
-          message: "The door is closed now."
-  - service: climate.set_hvac_mode
-    target:
-      entity_id: !input thermostat
-    data:
-      hvac_mode: "{{ states[thermostat_state_helper].state }}"
+  - choose:
+      - conditions:
+          - condition: template
+            value_template: "{{ expand(door_sensors) | selectattr('state','eq','off') | list | count == number_of_sensors }}"
+        sequence:
+          - service: notify.notify
+            data:
+              target: "{{ notification_targets }}"
+              message: >
+                {% if number_of_sensors > 1 %}
+                  All doors in {{ room_name }} are closed now.
+                {% else %}
+                  The door in {{ room_name }} is closed now.
+                {% endif %}
+          - service: climate.set_hvac_mode
+            target:
+              entity_id: !input thermostat
+            data:
+              hvac_mode: "{{ states[thermostat_state_helper].state }}"
 
 mode: restart
