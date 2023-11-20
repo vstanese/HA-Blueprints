@@ -77,18 +77,25 @@ action:
   - service: climate.turn_off
     target:
       entity_id: !input thermostat
-  - delay: "{{ delay_before_reminder | int }}:00"
+  - delay:
+      hours: 0
+      minutes: "{{ delay_before_reminder | int }}"
+      seconds: 0
   - alias: "Door Open Notification Loop"
     repeat:
       while:
         - condition: template
           value_template: "{{ expand(door_sensors) | selectattr('state','eq','on') | list | count > 0 }}"
       sequence:
-        - service: notify.notify
+        - service: notify.mobile_app_qiphone
           data:
-            target: "{{ notification_targets }}"
             message: "The door in {{ room_name }} is still open!"
-        - delay: "{{ reminder_interval | int }}:00"
+        # - service: notify.notify
+        #   data:
+        #     target: "{{ notification_targets }}"
+        #     message: "The door in {{ room_name }} is still open!"
+        - delay:
+            minutes: "{{ reminder_interval | int }}"
   - wait_for_trigger:
       - platform: state
         entity_id: !input door_sensors
@@ -98,7 +105,7 @@ action:
           - condition: template
             value_template: "{{ expand(door_sensors) | selectattr('state','eq','off') | list | count == number_of_sensors }}"
         sequence:
-          - service: notify.notify
+          - service: notify.mobile_app_qiphone
             data:
               target: "{{ notification_targets }}"
               message: >
